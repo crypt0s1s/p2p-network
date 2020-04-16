@@ -27,8 +27,10 @@ public class TCPReceiver implements Runnable {
     private void updateSuccesssors(int newFst, int newSnd) {
         controller.setFstSuccessor(newFst);
         System.out.println("My new first successor is Peer " + newFst);
+        controller.fstSuccessorMissedPingsReset();
         controller.setSndSuccessor(newSnd);
         System.out.println("My new second successor is Peer " + newSnd);
+        controller.sndSuccessorMissedPingsReset();
     }
 
     /**
@@ -44,7 +46,11 @@ public class TCPReceiver implements Runnable {
         System.out.println("My second successor is Peer " + arr[3]);
     }
 
-
+    /**
+     * Called when the new peer is the rightful first successor of the current peer.
+     * Sends new peer details of successors
+     * @param newPeer The peer asking to join the network
+     */
     private void acceptJoinRequest(int newPeer) {
         System.out.println("Peer " + newPeer + " Join request recieved");
 
@@ -104,7 +110,10 @@ public class TCPReceiver implements Runnable {
         return request;
     } 
 
-    // reads the TCP msg and applies the correct function to it
+    /**
+     * Processes the request and applies the correct function to it
+     * @param request The msg received
+     */
     private void processTCPMsg(String request) {
         String[] arr = request.split(" ");
         if (request.startsWith(controller.JOIN_REQUEST)) 
@@ -115,14 +124,35 @@ public class TCPReceiver implements Runnable {
             isFstSuccQueary(arr);
         else if (request.startsWith(SUCCESSOR_CONFIRM)) 
             succConfirmation(arr);
-        else if (request.startsWith("New fst Successor: ")) 
+        else if (request.startsWith(controller.NEW_FST_SUCCESSOR)) 
             updateSuccesssors(Integer.parseInt(arr[3]), Integer.parseInt(arr[7]));
         else if (request.startsWith(controller.GRACEFUL_DEPARTURE))
             gracefulDeparture(arr);
+        else if (request.startsWith(controller.DEAD_NODE_DETECTED))
+            abruptDeparture(arr);
         else
-            System.out.println("Not yet implemented");
+            System.out.println("Not yet implemented: " + request);
     }
 
+    /**
+     * Handles abrubt departure process
+     * @param arr The arguments of the message received
+     */
+    private void abruptDeparture(String[] arr) {
+// controller.tcpSender(fstSuccessor, controller.DEAD_NODE_DETECTED + sndSuccessor + " From: " + controller.getPeerId());
+        int deadNode = Integer.parseInt(arr[3]);
+        int senderID = Integer.parseInt(arr[5]);
+        if (deadNode == controller.getFstSuccessor()) {
+            controller.tcpSender(senderID, controller.NEW_FST_SUCCESSOR + peerID + controller.NEW_SND_SUCCESSOR + controller.getSndSuccessor());
+        } else {
+            controller.tcpSender(senderID, controller.NEW_FST_SUCCESSOR + peerID + controller.NEW_SND_SUCCESSOR + controller.getFstSuccessor()); 
+        }
+    }
+
+    /**
+     * Handles graceful departure process
+     * @param arr The arguments of the message recieved
+     */
     private void gracefulDeparture(String[] arr) {
         int peerNo = Integer.parseInt(arr[15]);
         System.out.println("Peer " + peerNo + " will depart from the network");
@@ -131,28 +161,43 @@ public class TCPReceiver implements Runnable {
         updateSuccesssors(newFst, newSnd);
     }
 
-    // sends new successors to old first predecessor
+    /**
+     * Sends new successors to old first predecessor
+     * @param arr The arguments of the message recieved
+     */
     private void succConfirmation(String[] arr) {
         int senderID = Integer.parseInt(arr[5]);
-        controller.tcpSender(senderID, "New fst Successor: " + peerID + " New snd Successor: " + controller.getFstSuccessor());
+        controller.tcpSender(senderID, controller.NEW_FST_SUCCESSOR + peerID + controller.NEW_SND_SUCCESSOR + controller.getFstSuccessor());
     }
 
-    // see if the node joining the network is the rightful successor
-    // if so accepts it into the network
-    // if not passes msg on to fst successor
+    //
+    /**
+     * See if the node joining the network is the rightful successor
+     * If so accepts it into the network
+     * If not passes msg on to fst successor
+     * @param request The request received
+     * @param arr The arguments of the message received
+     */
     private void processJoinReqMsg(String request, String[] arr) {
         int newPeer = Integer.parseInt(arr[4]);
-        if (isRightfulSuccessor(newPeer))
+        if (isRightfulSuccessor(newPeer, peerID, controller.getFstSuccessor()))
             acceptJoinRequest(newPeer);
         else {
-            //TODO skip nodes 
-            controller.tcpSender(controller.getFstSuccessor(), request);
+            int forwardingTo = -1;
+            if (isRightfulSuccessor(newPeer, controller.getFstSuccessor(), controller.getSndSuccessor()))
+                forwardingTo = controller.getFstSuccessor();
+            else
+                forwardingTo = controller.getSndSuccessor();
+            controller.tcpSender(forwardingTo, request);
             System.out.println("Peer " + newPeer + " Join request forwarded to my successor");
         }
     }
 
-    // checks if sender is its first successor
-    // sends back message asking for updated successors
+    /**
+     * Checks if sender is its first successor
+     * If so sends back message asking for updated successors
+     * @param arr The arguments of the message received
+     */
     private void isFstSuccQueary(String[] arr) {
         int senderID = Integer.parseInt(arr[5]);
         if (controller.getFstSuccessor() == senderID) {
@@ -163,10 +208,16 @@ public class TCPReceiver implements Runnable {
             // send back ping saying not first successor
     }
 
-    // checks if the joinging node should be this nodes first successor
-    private Boolean isRightfulSuccessor(int newPeer) {
-        return (newPeer < controller.getFstSuccessor() && newPeer > peerID) || 
-               (newPeer > peerID && peerID > controller.getFstSuccessor())  || 
-               (peerID > controller.getFstSuccessor() && controller.getFstSuccessor() < newPeer);
+    /**
+     * Checks if the joinging node should be the specified nodes first successor
+     * @param newPeer The peer joining the network
+     * @param peer The peer that is being questioned
+     * @param successor The successor of the peer that is being questioned
+     * @return If the joinging node should be this nodes first successor
+     */
+    private Boolean isRightfulSuccessor(int newPeer, int peer, int successor) {
+        return (newPeer < successor && newPeer > peer) || 
+               (newPeer > peer && peer > successor)  || 
+               (peer > successor && successor < newPeer);
     }
 }

@@ -32,8 +32,10 @@ public class UDPReceiver implements Runnable {
             } catch (Exception e) {
                 System.out.println(e);
             }
+
             //get data
             sentence = new String(receivePacket.getData());
+
             //Need only the data received not the spaces till size of buffer
             sentence = sentence.trim();
             controller.dbg("received: " + sentence);
@@ -45,23 +47,29 @@ public class UDPReceiver implements Runnable {
             finally { 
                 // syncLock.unlock();
             }
-            String[] arr = sentence.split(" ");
-            if(sentence.startsWith(controller.ASK_STILL_ALIVE)) {
-                int senderId = receivePacket.getPort();
-                if (arr[3].equals("fstSuccessor")) {
-                    controller.setFstPredeccessor(senderId - 12000);
-                    controller.fstSuccessorMissedPingsReset();
-                } else {
-                    controller.setSndPredeccessor(senderId - 12000);
-                    controller.sndSuccessorMissedPingsReset();
-                }
-                controller.pingS(controller.STILL_ALIVE, sAddr);
-                System.out.println("Ping request message recieved from Peer " + (senderId - 12000));
-            }
-            else if (sentence.equals(controller.STILL_ALIVE)) {
-                int senderId = receivePacket.getPort();
-                System.out.println("Ping response received from Peer " + (senderId - 12000)); 
-            } 
+            int senderPort = receivePacket.getPort();
+            if(sentence.startsWith(controller.ASK_STILL_ALIVE))
+                askStillAliveResponse(senderPort, sentence, sAddr);
+            else if (sentence.equals(controller.STILL_ALIVE))
+                stillAliveResponse(senderPort);
         }
+    }
+
+    private void askStillAliveResponse(int senderPort, String sentence, SocketAddress sAddr) {
+        String[] arr = sentence.split(" ");
+        if (arr[3].equals("fstSuccessor"))
+            controller.setFstPredeccessor(senderPort - 12000);
+        else
+            controller.setSndPredeccessor(senderPort - 12000);
+        controller.pingS(controller.STILL_ALIVE, sAddr);
+        System.out.println("Ping request message recieved from Peer " + (senderPort - 12000)); 
+    }
+
+    private void stillAliveResponse(int senderPort) {
+        System.out.println("Ping response received from Peer " + (senderPort - 12000));
+        if (senderPort - 12000 == controller.getFstSuccessor())
+            controller.fstSuccessorMissedPingsReset();
+        else
+            controller.sndSuccessorMissedPingsReset();
     }
 }

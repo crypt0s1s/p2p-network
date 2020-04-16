@@ -9,31 +9,32 @@ import java.util.concurrent.locks.*;
 
 public class p2p implements Runnable {
 
-    static final boolean DEBUG = false;
-    static volatile int fstSuccessor = -1;
-    static SocketAddress fstSucSock;
-    static int fstSuccessorMissedPings = 0;
-    static int sndSuccessor;
-    static SocketAddress sndSucSock;
-    static int sndSuccessorMissedPings = 0;
+    final boolean DEBUG = false;
+    volatile int fstSuccessor = -1;
+    volatile SocketAddress fstSucSock;
+    volatile int fstSuccessorMissedPings = 0;
+    volatile int sndSuccessor;
+    volatile SocketAddress sndSucSock;
+    volatile int sndSuccessorMissedPings = 0;
 
-    static byte[] sendData = new byte[1024];
-    static DatagramSocket serverSocket;
+    byte[] sendData = new byte[1024];
+    DatagramSocket serverSocket;
     // static int pingInt = 10000;
-    static ReentrantLock syncLock = new ReentrantLock();
-    static int peerID;
-    static volatile int fstPredeccessor = -1;
-    static volatile int sndPredeccessor = -1;
+    ReentrantLock syncLock = new ReentrantLock();
+    int peerID;
+    volatile int fstPredeccessor = -1;
+    volatile int sndPredeccessor = -1;
     static String[] initArgs;
-    static int pingInt;
-
-
+    int pingInt;
 
     final String ASK_STILL_ALIVE = "U still alive?";
     final String SUCCESSOR_CHANGE_REQUEST = "Successor Change request from: ";
     final String JOIN_REQUEST = "Join request from Peer ";
     final String STILL_ALIVE = "Haven't kicked the bucket yet!";
     final String GRACEFUL_DEPARTURE = "Though shall no longer be in thees presence.";
+    final String DEAD_NODE_DETECTED = "Dead node detected: ";
+    final String NEW_FST_SUCCESSOR = "New first successor: ";
+    final String NEW_SND_SUCCESSOR = " New second successor: ";
 
     public static void main(String[] args) throws Exception {
         initArgs = args;
@@ -77,7 +78,7 @@ public class p2p implements Runnable {
             dbg("TCP Sending " + msg + " to " + peerNo);
             Socket clientSocket = new Socket("localhost", serverPort);
             DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-            outToServer.writeBytes(msg + "\n\r");
+            outToServer.writeBytes(msg + '\n');
             clientSocket.close();
         } catch (Exception e) {
             System.out.println(e);
@@ -121,11 +122,19 @@ public class p2p implements Runnable {
     private void processCommand(String msg) {
         if (msg.equals("Quit"))
             handleQuit();
+        else if (msg.startsWith("Store ") && msg.length() == 10)
+            handleStoreReq();
+        else if (msg.startsWith("Request ") && msg.length() == 12); //TODO
+        else System.out.println("Unknown request");
+    }
+
+
+    private void handleStoreReq() {
+        
     }
 
     /**
-     * Handles Quit command
-     * Sends details to predeccessors about new successors
+     * Handles Quit command Sends details to predeccessors about new successors
      */
     private void handleQuit() {
         while(fstPredeccessor == -1);
@@ -149,17 +158,11 @@ public class p2p implements Runnable {
      */
     private void initialiseJoin() {
         int knownPeer = Integer.parseInt(initArgs[2]); 
-        String serverName = "localhost";
         int serverPort = findPort(knownPeer); 
 
         syncLock.lock();
         try {
-            Socket clientSocket = new Socket(serverName, serverPort);
-            String msg = JOIN_REQUEST + peerID;
-    
-            DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-            outToServer.writeBytes(msg + '\n');
-            clientSocket.close();
+            sendJoinRequest(serverPort);
         } catch (Exception e) {
             System.out.println(e);
         } finally {
@@ -167,6 +170,21 @@ public class p2p implements Runnable {
         }    
         pingInt = Integer.parseInt((initArgs[3]));
 
+    }
+
+    /**
+     * Sends the join request msg to the known peer
+     * @param serverPort The port of the known peer
+     * @throws Exception
+     */
+    private void sendJoinRequest(int serverPort) throws Exception {
+        String serverName = "localhost";
+        Socket clientSocket = new Socket(serverName, serverPort);
+        String msg = JOIN_REQUEST + peerID;
+
+        DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
+        outToServer.writeBytes(msg + '\n');
+        clientSocket.close();
     }
 
     /**
@@ -256,11 +274,23 @@ public class p2p implements Runnable {
         fstSuccessorMissedPings = 0;
     }
 
+    public int fstSuccessorMissedPingCount() {
+        return fstSuccessorMissedPings;
+    }
+
     public void sndSuccessorMissedPingsIncrement() {
         sndSuccessorMissedPings++;
     }
 
     public void sndSuccessorMissedPingsReset() {
         sndSuccessorMissedPings = 0;
+    }
+
+    public int sndSuccessorMissedPingCount() {
+        return sndSuccessorMissedPings;
+    }
+
+    public int getPeerId() {
+        return peerID;
     }
 }

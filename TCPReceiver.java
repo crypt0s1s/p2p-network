@@ -130,6 +130,8 @@ public class TCPReceiver implements Runnable {
             gracefulDeparture(arr);
         else if (request.startsWith(controller.DEAD_NODE_DETECTED))
             abruptDeparture(arr);
+        else if (request.startsWith(controller.STORE_REQ))
+            controller.storeRequest(arr[4]);
         else
             System.out.println("Not yet implemented: " + request);
     }

@@ -163,30 +163,51 @@ public class TCPReceiver implements Runnable {
 
                 // sending the file name to server. Uses PrintWriter         
                             // receiving the contents from server.  Uses input stream
-
-        System.out.println(newFileName);
-        BufferedOutputStream bos = null;
-
-
+        RandomAccessFile aFile = null;
         try {
-            byte[] mybytearray = new byte[1024];
-            InputStream is = connectionSocket.getInputStream();
-            FileOutputStream fos = new FileOutputStream(newFileName);
-            bos = new BufferedOutputStream(fos);
-            int bytesRead = is.read(mybytearray, 0, mybytearray.length);
-            bos.write(mybytearray, 0, bytesRead);
-            bos.close();
+            aFile = new RandomAccessFile("E:\\Test\\Video.avi", "rw");
+            ByteBuffer buffer = ByteBuffer.allocate(1024);
+            FileChannel fileChannel = aFile.getChannel();
+            while (socketChannel.read(buffer) &gt; 0) {
+                buffer.flip();
+                fileChannel.write(buffer);
+                buffer.clear();
+            }
+            Thread.sleep(1000);
+            fileChannel.close();
+            System.out.println("End of file reached..Closing channel");
+            socketChannel.close();
+            
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
-        } finally {
-            if (bos != null) {
-                try {
-                    bos.close();
-                } catch (Exception e) {
-                    System.out.println(e);
-                }
-            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
+        // System.out.println(newFileName);
+        // BufferedOutputStream bos = null;
+
+
+        // try {
+        //     byte[] mybytearray = new byte[1024];
+        //     InputStream is = connectionSocket.getInputStream();
+        //     FileOutputStream fos = new FileOutputStream(newFileName);
+        //     bos = new BufferedOutputStream(fos);
+        //     int bytesRead = is.read(mybytearray, 0, mybytearray.length);
+        //     bos.write(mybytearray, 0, bytesRead);
+        //     bos.close();
+        // } catch (IOException e) {
+        //     e.printStackTrace();
+        // } finally {
+        //     if (bos != null) {
+        //         try {
+        //             bos.close();
+        //         } catch (Exception e) {
+        //             System.out.println(e);
+        //         }
+        //     }
+        // }
 
         
 

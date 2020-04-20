@@ -166,10 +166,11 @@ public class TCPReceiver implements Runnable {
 
         System.out.println(newFileName);
         BufferedOutputStream bos = null;
-
+        int l = Integer.parseInt(length);
+        if (l <= 0) l = 1024;
 
         try {
-            byte[] mybytearray = new byte[1024];
+            byte[] mybytearray = new byte[l];
             InputStream is = connectionSocket.getInputStream();
             FileOutputStream fos = new FileOutputStream(newFileName);
             bos = new BufferedOutputStream(fos);

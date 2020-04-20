@@ -5,6 +5,7 @@ import java.util.*;
 import java.text.SimpleDateFormat;
 import java.util.concurrent.locks.*;
 
+
 public class TCPReceiver implements Runnable {
 
     int peerID;
@@ -95,15 +96,12 @@ public class TCPReceiver implements Runnable {
         String request = null;
         try {
             Socket connectionSocket = welcomeSocket.accept();
-            controller.syncLock.lock();
             BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
             request = inFromClient.readLine();
             processTCPMsg(request, connectionSocket);
             connectionSocket.close();
         } catch (Exception e) {
             e.printStackTrace();
-        } finally {
-            controller.syncLock.unlock();
         }
     } 
 
@@ -171,12 +169,10 @@ public class TCPReceiver implements Runnable {
         String newFileName = "received_" + file + "." + fileType;
         System.out.println("Peer " + sender + " had File " + file);
         System.out.println("Receiving File " + file + " from Peer " + sender);
-
         receiveFile(newFileName, connectionSocket, length);
 
         System.out.println("File " + file + " received");
     }
-
 
     /**
      * Recieves a file over tcp.

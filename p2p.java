@@ -1,10 +1,12 @@
 // Joshua Sumskas - z5208508
+// Recomended ping interval is 15 seconds
 
 import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.locks.*;
 import java.util.regex.Pattern;
+
 
 public class p2p implements Runnable {
 
@@ -308,7 +310,13 @@ public class p2p implements Runnable {
      * @return If the file should be stored at this peer
      */
     public boolean shouldFileBeStoredHere(int hashedVal) {
-        while(fstPredeccessor == -1);
+        while(fstPredeccessor == -1) {
+            try {
+                Thread.sleep(100);
+            } catch (Exception e) {
+                //TODO: handle exception
+            }
+        }
         return isPeerRightfulStorer(fstPredeccessor, peerID, hashedVal);
     }
 

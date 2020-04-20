@@ -167,81 +167,49 @@ public class p2p implements Runnable {
     // https://www.rgagnon.com/javadetails/java-0542.html
     private void sendFile(String msg, int peerRequesting, File file) {
 
-        Socket clientSocket = null;
         int serverPort = findPort(peerRequesting);
 
-        clientSocket = new Socket("localhost", serverPort);
-        DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-        outToServer.writeBytes(msg + '\n');
-        RandomAccessFile aFile = null;
-    try {
-        aFile = new RandomAccessFile(requestedFile, "r");
-        FileChannel inChannel = aFile.getChannel();
-        ByteBuffer buffer = ByteBuffer.allocate(1024);
-        while (inChannel.read(buffer) > 0) {
-            buffer.flip();
-            socketChannel.write(buffer);
-            buffer.clear();
+        BufferedInputStream bis = null;
+        OutputStream os = null;
+        Socket clientSocket = null;
+
+        syncLock.lock();
+        try {
+            clientSocket = new Socket("localhost", serverPort);
+            DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
+            outToServer.writeBytes(msg + '\n');
+
+            byte[] mybytearray = new byte[(int) file.length()];
+            bis = new BufferedInputStream(new FileInputStream(file));
+            bis.read(mybytearray, 0, mybytearray.length);
+            os = clientSocket.getOutputStream();
+            os.write(mybytearray, 0, mybytearray.length);
+            os.flush();
+
+        } catch (Exception e) {
+            System.out.println(e);
+        } finally {
+            if (bis != null)
+                try {
+                    bis.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            if (os != null)
+                try {
+                    os.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+            if (clientSocket != null)
+                try {
+                    clientSocket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
         }
-        // Thread.sleep(1000);
-        System.out.println("End of file reached..");
-        socketChannel.close();
-        aFile.close();
-    } catch (FileNotFoundException e) {
-        e.printStackTrace();
-    } catch (IOException e) {
-        e.printStackTrace();
-    } catch (InterruptedException e) {
-        e.printStackTrace();
-    }
-
-
-
-
-
-        // int serverPort = findPort(peerRequesting);
-
-        // BufferedInputStream bis = null;
-        // OutputStream os = null;
-        // Socket clientSocket = null;
-
-        // syncLock.lock();
-        // try {
-        //     clientSocket = new Socket("localhost", serverPort);
-        //     DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-        //     outToServer.writeBytes(msg + '\n');
-
-        //     byte[] mybytearray = new byte[(int) file.length()];
-        //     bis = new BufferedInputStream(new FileInputStream(file));
-        //     bis.read(mybytearray, 0, mybytearray.length);
-        //     os = clientSocket.getOutputStream();
-        //     os.write(mybytearray, 0, mybytearray.length);
-        //     os.flush();
-
-        // } catch (Exception e) {
-        //     System.out.println(e);
-        // } finally {
-        //     if (bis != null)
-        //         try {
-        //             bis.close();
-        //         } catch (IOException e) {
-        //             e.printStackTrace();
-        //         }
-        //     if (os != null)
-        //         try {
-        //             os.close();
-        //         } catch (IOException e) {
-        //             e.printStackTrace();
-        //         }
-
-        //     if (clientSocket != null)
-        //         try {
-        //             clientSocket.close();
-        //         } catch (IOException e) {
-        //             e.printStackTrace();
-        //         }
-        // }
-        // syncLock.unlock();
+        syncLock.unlock();
     }
 
     //TODO send multiple files with the same name

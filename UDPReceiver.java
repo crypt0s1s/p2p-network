@@ -55,6 +55,8 @@ public class UDPReceiver implements Runnable {
         }
     }
 
+
+    
     private void askStillAliveResponse(int senderPort, String sentence, SocketAddress sAddr) {
         String[] arr = sentence.split(" ");
         if (arr[3].equals("fstSuccessor"))
@@ -65,6 +67,7 @@ public class UDPReceiver implements Runnable {
         System.out.println("Ping request message recieved from Peer " + (senderPort - 12000)); 
     }
 
+    
     private void stillAliveResponse(int senderPort) {
         System.out.println("Ping response received from Peer " + (senderPort - 12000));
         if (senderPort - 12000 == controller.getFstSuccessor())

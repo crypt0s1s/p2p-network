@@ -6,7 +6,6 @@ import java.util.*;
 // import java.util.*;
 import java.util.concurrent.locks.*;
 
-
 public class p2p implements Runnable {
 
     final boolean DEBUG = false;
@@ -14,7 +13,7 @@ public class p2p implements Runnable {
     static String[] initArgs;
 
     int peerID;
-    
+
     volatile int fstSuccessor = -1;
     volatile SocketAddress fstSucSock;
     volatile int fstSuccessorMissedPings = 0;
@@ -30,7 +29,7 @@ public class p2p implements Runnable {
     DatagramSocket serverSocket;
     ReentrantLock syncLock = new ReentrantLock();
 
-    ArrayList<Integer> storedFiles = new ArrayList<Integer>();
+    ArrayList<String> storedFiles = new ArrayList<String>();
 
     final String ASK_STILL_ALIVE = "U still alive?";
     final String SUCCESSOR_CHANGE_REQUEST = "Successor Change request from: ";
@@ -41,19 +40,28 @@ public class p2p implements Runnable {
     final String NEW_FST_SUCCESSOR = "New first successor: ";
     final String NEW_SND_SUCCESSOR = " New second successor: ";
     final String STORE_REQ = "Store request for file: ";
+    final String FILE_REQ = "Requesting file ";
+    final String SENDING_FILE_NOTICE = "Fullfilling file request. Sending file ";
 
     public static void main(String[] args) throws Exception {
         initArgs = args;
         new Thread(new p2p()).start();
     }
 
+    /**
+     * Finds the port number of a given ID
+     * 
+     * @param id
+     * @return
+     */
     public int findPort(int id) {
         return id + 12000;
     }
 
     /**
      * Sends a message to a specified peer over UDP.
-     * @param msg The message to send to the peer.
+     * 
+     * @param msg  The message to send to the peer.
      * @param addr The socket of the specified peer.
      */
     public void pingS(String msg, SocketAddress addr) {
@@ -64,21 +72,21 @@ public class p2p implements Runnable {
             dbg("From: " + peerID + ". Sending '" + msg + "' to " + addr.toString());
             serverSocket.send(sendPacket);
             dbg("sent");
-        } catch (IOException e){ 
+        } catch (IOException e) {
             dbg(msg + " FAILED TO SEND: " + e.getMessage());
         }
         syncLock.unlock();
     }
 
- 
     /**
      * Sends a message to a specified peer over TCP.
+     * 
      * @param peerNo Peer the message needs to be send to.
-     * @param msg The message to send to the peer.
+     * @param msg    The message to send to the peer.
      */
     public void tcpSender(int peerNo, String msg) {
 
-        int serverPort = findPort(peerNo); 
+        int serverPort = findPort(peerNo);
         syncLock.lock();
         try {
             dbg("TCP Sending " + msg + " to " + peerNo);
@@ -95,13 +103,12 @@ public class p2p implements Runnable {
 
     public void run() {
         peerID = Integer.parseInt(initArgs[1]);
-        
+
         // creates tcp listening thread
         new Thread(new TCPReceiver(peerID, this)).start();
-        
+
         // set up initial parameters
         nodeSetup();
-
         // creates udp listenting thread and udp pingging thread
         new Thread(new UDPReceiver(peerID, this, serverSocket)).start();
         new Thread(new UDPPinger(pingInt, this)).start();
@@ -114,7 +121,7 @@ public class p2p implements Runnable {
      */
     private void commandThread() {
         Scanner scanner = new Scanner(System.in);
-        while(true) {
+        while (true) {
             String msg = scanner.nextLine();
             processCommand(msg);
         }
@@ -122,25 +129,218 @@ public class p2p implements Runnable {
 
     /**
      * Process the stdin commands
+     * 
      * @param msg The stdin command
      */
     private void processCommand(String msg) {
         if (msg.equals("Quit"))
             handleQuit();
-        else if (msg.startsWith("Store ") && msg.length() == 10) {//TODO add more safety on this section
+        else if (msg.startsWith("Store ")) {// TODO add more safety on this section
             String[] arr = msg.split(" ");
             storeRequest(arr[1]);
-        } else if (msg.startsWith("Request ") && msg.length() == 12); //TODO
+        } else if (msg.startsWith("Request "))
+            retrieveFile(msg);
         else if (msg.equals("Show Stored Files"))
             showStoredFiles();
-        else System.out.println("Unknown request");
+        else
+            System.out.println("Unknown request");
+    }
+
+    public void findAndSendFile(String file, int peerRequesting) {
+        if (storedFiles.contains(file)) {
+            File requestedFile = getFile(file);
+            if (file != null)
+                prepareAndSendFile(requestedFile, file, peerRequesting);
+        }
+    }
+
+    private void prepareAndSendFile(File requestedFile, String file, int peerRequesting) {
+
+        System.out.println("Sending file " + file + " to Peer " + peerRequesting);
+        // String fileType = requestedFile.getName().split(".")[0];
+        String fullName = requestedFile.getName();
+        String fileType = fullName.split("[.]")[1];
+        String msg = SENDING_FILE_NOTICE + file + " of type: " + fileType + " from Peer: " + peerID + " " + requestedFile.length();
+        sendFile(msg, peerRequesting, requestedFile);
+        System.out.println("The file has been sent");
+    }
+
+    // https://www.rgagnon.com/javadetails/java-0542.html
+    private void sendFile(String msg, int peerRequesting, File file) {
+
+        int serverPort = findPort(peerRequesting);
+
+        // ServerSocket sersock = new ServerSocket(4000);
+        // System.out.println("Server ready for connection");
+        // Socket sock = sersock.accept();            // binding with port: 4000
+        // System.out.println("Connection is successful and wating for chatting");
+                                                                                                    
+                                  // reading the file name from client
+
+        BufferedInputStream buffInputStream = null;
+        OutputStream os = null;
+        Socket clientSocket = null;
+        PrintWriter pwrite = null;
+        BufferedReader contentRead = null;
+        
+        syncLock.lock();
+        try {
+            dbg("TCP Sending " + msg + " to " + peerRequesting);
+            clientSocket = new Socket("localhost", serverPort);
+            DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
+            outToServer.writeBytes(msg + '\n');
+
+
+            String fname = file.getName();
+            // reading file contents
+            contentRead = new BufferedReader(new FileReader(fname));
+      
+          // keeping output stream ready to send the contents
+            OutputStream ostream = clientSocket.getOutputStream( );
+            pwrite = new PrintWriter(ostream, true);
+
+            String str;
+            while((str = contentRead.readLine()) !=  null) // reading line-by-line from file
+            {
+            pwrite.println(str);         // sending each line to client
+            }
+
+        } catch (Exception e) {
+            System.out.println(e);
+        } finally {
+            if (buffInputStream != null)
+                try {
+                    buffInputStream.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            if (os != null)
+                try {
+                    os.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+            if (clientSocket != null)
+                try {
+                    clientSocket.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            pwrite.close();  
+            // fileRead.close(); 
+            if (contentRead != null) 
+                try {
+                    contentRead.close();
+                } catch (Exception e) {
+                    System.out.println(e);
+                }
+                
+        }
+
+
+        // InputStream istream = sock.getInputStream( );
+        // BufferedReader fileRead =new BufferedReader(new InputStreamReader(istream));
+
+
+
+        // BufferedInputStream buffInputStream = null;
+        // OutputStream os = null;
+        // Socket clientSocket = null;
+        
+        // syncLock.lock();
+        // try {
+        //     dbg("TCP Sending " + msg + " to " + peerRequesting);
+        //     clientSocket = new Socket("localhost", serverPort);
+        //     DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
+        //     outToServer.writeBytes(msg + '\n');
+
+        //     byte[] mybytearray = new byte[(int) file.length()];
+        //     FileInputStream fileIntputStream = new FileInputStream(file);
+        //     buffInputStream = new BufferedInputStream(fileIntputStream);
+        //     buffInputStream.read(mybytearray, 0, mybytearray.length);
+
+        //     os = clientSocket.getOutputStream();
+
+        //     // System.out.println("Sending " + FILE_TO_SEND + "(" + mybytearray.length + "
+        //     // bytes)");
+        //     os.write(mybytearray, 0, mybytearray.length);
+        //     os.flush();
+
+        // } catch (Exception e) {
+        //     System.out.println(e);
+        // } finally {
+        //     if (buffInputStream != null)
+        //         try {
+        //             buffInputStream.close();
+        //         } catch (IOException e) {
+        //             e.printStackTrace();
+        //         }
+        //     if (os != null)
+        //         try {
+        //             os.close();
+        //         } catch (IOException e) {
+        //             e.printStackTrace();
+        //         }
+
+        //     if (clientSocket != null)
+        //         try {
+        //             clientSocket.close();
+        //         } catch (IOException e) {
+        //             e.printStackTrace();
+        //         }
+        // }
+
+            // DataInputStream inFromFile = new DataInputStream(new BufferedInputStream(new FileInputStream(file)));
+            // byte[] fileData = inFromFile.readAllBytes();
+            // outToServer.write(fileData);
+            // inFromFile.close();
+            // send file here
+        syncLock.unlock();
+     
+    }
+
+    //TODO send multiple files with the same name
+    private File getFile(String file) {
+        System.out.println("File " + file + " is stored here");
+        File projectFolder = new File(".");
+        File[] files = projectFolder.listFiles();
+        File requestedFile = null;
+        for (File f : files) {
+            if (f.getName().startsWith(file + ".")) {
+                requestedFile = f;
+                break;
+            }
+        }
+        if (requestedFile == null) {
+            System.out.println("File is supposed to be stored here but no file was found");
+        }
+        return requestedFile;
+    }
+
+    private void retrieveFile(String msg) {
+        String[] arr = msg.split(" ");
+        String file = arr[1];
+        int fileNo = Integer.parseInt(file);
+        int hashedVal = Math.floorMod(fileNo, 256);
+        int receipient = -1;
+        if (shouldFileBeStoredHere(hashedVal))
+            System.out.println("The file is already stored by this peer ya numpty"); // <3
+        else {
+            if (isPeerRightfulStorer(peerID, fstSuccessor, hashedVal))
+                receipient = fstSuccessor;
+            else
+                receipient = sndSuccessor;
+            tcpSender(receipient, FILE_REQ + file + " Request from peer " + peerID);
+            System.out.println("File request for " + file + " has been sent to my successor");
+        }
     }
 
     /**
      * Prints the stored files file numbers
      */
     private void showStoredFiles() {
-        Iterator<Integer> i = storedFiles.iterator();
+        Iterator<String> i = storedFiles.iterator();
         System.out.println("The Files stored at this node are:");
         while (i.hasNext()) {
            System.out.println(i.next());
@@ -158,10 +358,10 @@ public class p2p implements Runnable {
         int hashedVal = Math.floorMod(fileNo, 256);
 
         if (shouldFileBeStoredHere(hashedVal)) {
-            storedFiles.add(fileNo);
-            System.out.println("Store " + fileNo + " reuqest accepted");
+            storedFiles.add(file);
+            System.out.println("Store " + file + " reuqest accepted");
         } else {
-            forwardStoreReq(fileNo);
+            forwardStoreReq(file, hashedVal);
         }
     }
 
@@ -171,7 +371,7 @@ public class p2p implements Runnable {
      * @param hashedVal The hashed value of the file
      * @return If the file should be stored at this peer
      */
-    private boolean shouldFileBeStoredHere(int hashedVal) {
+    public boolean shouldFileBeStoredHere(int hashedVal) {
         while(fstPredeccessor == -1);
         return isPeerRightfulStorer(fstPredeccessor, peerID, hashedVal);
     }
@@ -183,15 +383,14 @@ public class p2p implements Runnable {
      * Else send it to the second successor
      * @param fileNo The file to be stored
      */
-    private void forwardStoreReq(int fileNo) {
-        int hashedVal = Math.floorMod(fileNo, 256);
+    private void forwardStoreReq(String file, int hashedVal) {
         int forwardee;
         if (isPeerRightfulStorer(peerID, fstSuccessor, hashedVal))
             forwardee = fstSuccessor;
         else
             forwardee = sndSuccessor;
-        tcpSender(forwardee, STORE_REQ + fileNo);
-        System.out.println("Store " + fileNo + " request forwarded to my successor");
+        tcpSender(forwardee, STORE_REQ + file);
+        System.out.println("Store " + file + " request forwarded to my successor");
     }
 
     /**
@@ -205,11 +404,18 @@ public class p2p implements Runnable {
         System.exit(0);
     }
 
-    private boolean isPeerRightfulStorer(int peer, int peersFstSucc, int hashedVal) {
+    /**
+     * Checks if the given peers first successor is the correct place to store a file
+     * @param peerFstPredeccessor The given peer's fst predeccessor
+     * @param peer The  given peer
+     * @param hashedVal The hashed value of the file
+     * @return If the peer is the correct storer
+     */
+    public boolean isPeerRightfulStorer(int peerFstPredeccessor, int peer, int hashedVal) {
         return 
-            (peer < hashedVal && hashedVal <= peersFstSucc) || 
-            (peersFstSucc < peer && peer < hashedVal) || 
-            (hashedVal <= peersFstSucc && peersFstSucc < peer);
+            (peerFstPredeccessor < hashedVal && hashedVal <= peer) || 
+            (peer < peer && peerFstPredeccessor < hashedVal) || 
+            (hashedVal <= peer && peer < peerFstPredeccessor);
     }
 
     /**

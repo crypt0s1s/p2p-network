@@ -18,34 +18,34 @@ public class UDPReceiver implements Runnable {
 
     }
 
+    /**
+     * Starts a UDP receiving loop.
+     * When a message is received processes message if a valid message.
+     */
     public void run() {
         String sentence = null;
         byte[] receiveData = null;
         SocketAddress sAddr;
 
         while (true) {
-            //receive UDP datagram
             receiveData = new byte[1024];
             DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
             try {
                 serverSocket.receive(receivePacket);
             } catch (Exception e) {
-                System.out.println(e);
+                e.printStackTrace();
             }
 
-            //get data
             sentence = new String(receivePacket.getData());
 
-            //Need only the data received not the spaces till size of buffer
             sentence = sentence.trim();
-            controller.dbg("received: " + sentence);
             
-            // syncLock.lock();
+            controller.syncLock.lock();
             try {
                 sAddr = receivePacket.getSocketAddress();
             }
             finally { 
-                // syncLock.unlock();
+                controller.syncLock.unlock();
             }
             int senderPort = receivePacket.getPort();
             if(sentence.startsWith(controller.ASK_STILL_ALIVE))
@@ -56,7 +56,12 @@ public class UDPReceiver implements Runnable {
     }
 
 
-    
+    /**
+     * Updates predeccessors and sends response message
+     * @param senderPort
+     * @param sentence The received sentence
+     * @param sAddr The socket address of the sender
+     */
     private void askStillAliveResponse(int senderPort, String sentence, SocketAddress sAddr) {
         String[] arr = sentence.split(" ");
         if (arr[3].equals("fstSuccessor"))
@@ -67,7 +72,10 @@ public class UDPReceiver implements Runnable {
         System.out.println("Ping request message recieved from Peer " + (senderPort - 12000)); 
     }
 
-    
+    /**
+     * Prints out a message claiming ping was received at resets the missed ping counter for the sender.
+     * @param senderPort 
+     */    
     private void stillAliveResponse(int senderPort) {
         System.out.println("Ping response received from Peer " + (senderPort - 12000));
         if (senderPort - 12000 == controller.getFstSuccessor())

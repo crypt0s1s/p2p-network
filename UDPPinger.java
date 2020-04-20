@@ -10,6 +10,11 @@ public class UDPPinger implements Runnable {
         this.controller = controller;
     }
 
+    /**
+     * Pings successors every x milliseconds (specified by ping int)
+     * Increments missed ping counters when ping is sent
+     * Checks if a node can be considered dead between pings
+     */
     public void run() {
         while(true) {
             controller.pingS(controller.ASK_STILL_ALIVE + " fstSuccessor", controller.getFstSuccSocket());

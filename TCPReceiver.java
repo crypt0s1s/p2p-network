@@ -14,6 +14,7 @@ public class TCPReceiver implements Runnable {
     final String CHANGE_REQ_RECEIVED = "Successor Change request received";
     final String SUCCESSOR_CONFIRM = "You are my first successor ";
     final String SUCCESSOR_QUEARY = "Am I your first successor: "; 
+    final String NOT_FST_SUCCESSOR = "I am not your first successor ";
 
     public TCPReceiver(int peerID, p2p controller) {
         this.peerID = peerID;
@@ -60,15 +61,13 @@ public class TCPReceiver implements Runnable {
         Thread changeSuccessors = new Thread() {
             public void run() {
                 while (controller.getFstPredeccessor() == -1);
-                int oldFstPred = controller.getFstPredeccessor();
+                int fstPred = controller.getFstPredeccessor();
                 controller.tcpSender(newPeer, "New Peers: " + controller.getFstSuccessor() + " " + controller.getSndSuccessor());
                 updateSuccesssors(newPeer, controller.getFstSuccessor());
-                controller.tcpSender(oldFstPred, "Am I your first successor: " + peerID);
+                controller.tcpSender(fstPred, SUCCESSOR_QUEARY + peerID);
             }
         };
         changeSuccessors.start();
-
-        controller.dbg("exiting acceptJoinRequest");
     }
 
     public void run()  {
@@ -78,9 +77,8 @@ public class TCPReceiver implements Runnable {
         try {
             welcomeSocket = new ServerSocket(serverPort);
         } catch (Exception e) {
-            System.out.println(e);
+            e.printStackTrace();
         }
-        controller.dbg("Server is ready :");
         
         while (true){
             receiveTCPMsg(welcomeSocket);
@@ -94,20 +92,18 @@ public class TCPReceiver implements Runnable {
      */
     private void receiveTCPMsg(ServerSocket welcomeSocket) {
 
-        controller.dbg("TCP: accepting message...");
         String request = null;
         try {
             Socket connectionSocket = welcomeSocket.accept();
-        // syncLock.lock();
+            controller.syncLock.lock();
             BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
             request = inFromClient.readLine();
             processTCPMsg(request, connectionSocket);
-            controller.dbg("TCP message received: " + request);
             connectionSocket.close();
         } catch (Exception e) {
-            System.out.println(e);
+            e.printStackTrace();
         } finally {
-            // syncLock.unlock();
+            controller.syncLock.unlock();
         }
     } 
 
@@ -137,10 +133,36 @@ public class TCPReceiver implements Runnable {
             fileRequest(request, arr);
         else if (request.startsWith(controller.SENDING_FILE_NOTICE))
             startFileReceive(arr, connectionSocket);
+        else if (request.startsWith(NOT_FST_SUCCESSOR))
+            waitAndResendQueary();
         else
             System.out.println("Not yet implemented: " + request);
     }
 
+    /**
+     * Reatempts to send predeccessor queary
+     * Waits 15 seconds in order for ping messages to make it through
+     */
+    private void waitAndResendQueary() {
+        Thread changeSuccessors = new Thread() {
+            public void run() {
+                try {
+                    Thread.sleep(15000);    
+                } catch (Exception e) {
+                }
+                int fstPred = controller.getFstPredeccessor();
+                controller.tcpSender(fstPred, SUCCESSOR_QUEARY + peerID);
+            }
+        }; 
+        changeSuccessors.start();
+    }
+
+    /**
+     * Start receiving the file
+     * Prints out required statemnts and parses message input
+     * @param arr The arguments of the initial message sent
+     * @param connectionSocket The socket where the file is being received
+     */
     private void startFileReceive(String[] arr, Socket connectionSocket) {
         String file = arr[5];
         String fileType = arr[8];
@@ -155,16 +177,17 @@ public class TCPReceiver implements Runnable {
         System.out.println("File " + file + " received");
     }
 
-    // https://www.rgagnon.com/javadetails/java-0542.html
 
+    /**
+     * Recieves a file over tcp.
+     * Code based from http://www.java2s.com/Code/Java/Network-Protocol/TransferafileviaSocket.htm
+     * Errors will occur if file sent is too large due to the maximium value of int
+     * @param newFileName The name of the file that is being received
+     * @param connectionSocket The socket where the data is being received
+     * @param length The legnth of the file as a string
+     */
     private void receiveFile(String newFileName, Socket connectionSocket, String length) {
 
-                   // reading the file name from keyboard. Uses input stream
-
-                // sending the file name to server. Uses PrintWriter         
-                            // receiving the contents from server.  Uses input stream
-
-        System.out.println(newFileName);
         BufferedOutputStream bos = null;
         int l = Integer.parseInt(length);
         if (l <= 0) l = 1024;
@@ -184,71 +207,19 @@ public class TCPReceiver implements Runnable {
                 try {
                     bos.close();
                 } catch (Exception e) {
-                    System.out.println(e);
+                    e.printStackTrace();
                 }
             }
         }
-
-        
-
-        // long l = Long.parseLong(length);
-        // System.out.println("hello");
-        // int fileSize = (int) l;
-        // System.out.println(fileSize);
-        // File newFile = new File(newFileName);
-        
-        // int bytesRead;
-        // int current = 0;
-        // FileOutputStream fos = null;
-        // BufferedOutputStream bos = null;
-
-        // try {
-        //     // receive file
-        //     byte [] mybytearray  = new byte [fileSize];
-        //     InputStream is = connectionSocket.getInputStream();
-        //     fos = new FileOutputStream(newFile);
-
-        //     bos = new BufferedOutputStream(fos);
-        //     bytesRead = is.read(mybytearray, 0, mybytearray.length);
-        //     current = bytesRead;
-
-        //     do {
-        //         bytesRead = is.read(mybytearray, current, (mybytearray.length - current));
-        //        if (bytesRead >= 0) current += bytesRead;
-        //     } while (bytesRead > -1);
-        //     System.out.println("marker E: " + current);
-        //     current = 63;
-        //     bos.write(mybytearray, 0 , current);
-        //     System.out.println("marker A: " + current);
-        //     bos.flush();
-        //     System.out.println("marker B");
-        //     // System.out.println("File " + FILE_TO_RECEIVED
-        //     //     + " downloaded (" + current + " bytes read)");
-        // } catch (Exception e) {
-        //     System.out.println(e);
-        // }
-        // finally {
-        //     if (fos != null) try {
-        //         fos.close();
-        //     } catch (Exception e) {
-        //         System.out.println(e);
-        //     }
-        //     if (bos != null) try {
-        //         bos.close();
-        //     } catch (Exception e) {
-        //         System.out.println(e);
-        //     } 
-        // }
-        // Socket clientSocket = new Socket("localhost", serverPort);
-        // DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-        // outToServer.writeBytes(msg + '\n');
-        // DataInputStream inFromFile = new DataInputStream(new BufferedInputStream(new FileInputStream(file)));
-        // DataOutputStream outToFile = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(newFile)));
-        // BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
-        // outToFile.write(inFromClient.lines());
     }
 
-
+    /**
+     * Processes the file request
+     * If the file should be stored at this peer further checks are made and the file is sent if in the node
+     * Else passes the request on to the first (if it should be stored in that node) or seccond node
+     * @param msg The whole message recieved
+     * @param arr The arguments of the message
+     */
     private void fileRequest(String msg, String[] arr) {
         String file = arr[2];
         int fileNo = Integer.parseInt(file);
@@ -301,7 +272,6 @@ public class TCPReceiver implements Runnable {
         controller.tcpSender(senderID, controller.NEW_FST_SUCCESSOR + peerID + controller.NEW_SND_SUCCESSOR + controller.getFstSuccessor());
     }
 
-    //
     /**
      * See if the node joining the network is the rightful successor
      * If so accepts it into the network
@@ -335,20 +305,8 @@ public class TCPReceiver implements Runnable {
             controller.tcpSender(senderID, SUCCESSOR_CONFIRM + peerID);
             System.out.println(CHANGE_REQ_RECEIVED);
         } else {
-            // Thread changeSuccessors = new Thread() {
-            //     public void run() {
-
-            //         //slee[]
-            //         while (controller.getFstPredeccessor() == -1);
-            //         controller.tcpSender(newPeer, "New Peers: " + controller.getFstSuccessor() + " " + controller.getSndSuccessor());
-            //         updateSuccesssors(newPeer, controller.getFstSuccessor());
-            //         int oldFstPred = controller.getFstPredeccessor();
-            //         controller.tcpSender(oldFstPred, "Am I your first successor: " + peerID);
-            // };
-            //     }
-            // changeSuccessors.start();
+            controller.tcpSender(senderID, NOT_FST_SUCCESSOR + peerID);
         }
-            // send back ping saying not first successor
     }
 
     /**

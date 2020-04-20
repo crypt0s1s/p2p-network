@@ -4,6 +4,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.locks.*;
+import java.util.regex.Pattern;
 
 public class p2p implements Runnable {
 
@@ -41,6 +42,7 @@ public class p2p implements Runnable {
     final String STORE_REQ = "Store request for file: ";
     final String FILE_REQ = "Requesting file ";
     final String SENDING_FILE_NOTICE = "Fullfilling file request. Sending file ";
+    final String INVALID_COMMAND = "The command that was just entered is invaid";
 
     public static void main(String[] args) throws Exception {
         initArgs = args;
@@ -68,11 +70,9 @@ public class p2p implements Runnable {
         syncLock.lock();
         DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, addr);
         try {
-            dbg("From: " + peerID + ". Sending '" + msg + "' to " + addr.toString());
             serverSocket.send(sendPacket);
-            dbg("sent");
         } catch (IOException e) {
-            dbg(msg + " FAILED TO SEND: " + e.getMessage());
+            e.printStackTrace();
         }
         syncLock.unlock();
     }
@@ -88,13 +88,12 @@ public class p2p implements Runnable {
         int serverPort = findPort(peerNo);
         syncLock.lock();
         try {
-            dbg("TCP Sending " + msg + " to " + peerNo);
             Socket clientSocket = new Socket("localhost", serverPort);
             DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
             outToServer.writeBytes(msg + '\n');
             clientSocket.close();
         } catch (Exception e) {
-            System.out.println(e);
+            e.printStackTrace();
         }
         syncLock.unlock();
 
@@ -134,29 +133,52 @@ public class p2p implements Runnable {
     private void processCommand(String msg) {
         if (msg.equals("Quit"))
             handleQuit();
-        else if (msg.startsWith("Store ")) {// TODO add more safety on this section
+        else if (msg.startsWith("Store ")) {
             String[] arr = msg.split(" ");
+            if (arr.length != 2) System.out.println(INVALID_COMMAND);
             storeRequest(arr[1]);
         } else if (msg.startsWith("Request "))
             retrieveFile(msg);
         else if (msg.equals("Show Stored Files"))
             showStoredFiles();
-        else
-            System.out.println("Unknown request");
+        else if (msg.length() == 0);
+        else 
+            System.out.println(INVALID_COMMAND);
     }
 
+    /**
+     * Finds all files with requested name and sends them indiviually
+     * @param file The name of the requested file
+     * @param peerRequesting The peer requesting the file
+     */
     public void findAndSendFile(String file, int peerRequesting) {
         if (storedFiles.contains(file)) {
-            File requestedFile = getFile(file);
-            if (file != null)
-                prepareAndSendFile(requestedFile, file, peerRequesting);
+            System.out.println("File " + file + " is stored here");
+            File projectFolder = new File(".");
+            boolean fileFound = false;
+            File[] files = projectFolder.listFiles();
+            for (File f : files) {
+                if (f.getName().startsWith(file + ".")) {
+                    prepareAndSendFile(f, file, peerRequesting);
+                    fileFound = true;
+                }
+            }
+            if (!fileFound) System.out.println("File is said to be stored at this node but no file was found.");
+        } else {
+            System.out.println("File is not stored at this node despite it being the correct location for the file.");
         }
     }
 
+    /**
+     * Handles printing to terminal and basic functions to gather information needed 
+     * in order to send the file.
+     * @param requestedFile The file that is requested
+     * @param file The name of the requested file
+     * @param peerRequesting The peer that requests the file
+     */
     private void prepareAndSendFile(File requestedFile, String file, int peerRequesting) {
 
         System.out.println("Sending file " + file + " to Peer " + peerRequesting);
-        // String fileType = requestedFile.getName().split(".")[0];
         String fullName = requestedFile.getName();
         String fileType = fullName.split("[.]")[1];
         String msg = SENDING_FILE_NOTICE + file + " of type: " + fileType + " from Peer: " + peerID + " " + requestedFile.length();
@@ -164,7 +186,13 @@ public class p2p implements Runnable {
         System.out.println("The file has been sent");
     }
 
-    // https://www.rgagnon.com/javadetails/java-0542.html
+    /**
+     * Sends specified file to requesting peer
+     * Codes is based from http://www.java2s.com/Code/Java/Network-Protocol/TransferafileviaSocket.htm
+     * @param msg The initial message detailing what is being sent
+     * @param peerRequesting The peer requeting the file
+     * @param file The file being sent
+     */
     private void sendFile(String msg, int peerRequesting, File file) {
 
         int serverPort = findPort(peerRequesting);
@@ -187,7 +215,7 @@ public class p2p implements Runnable {
             os.flush();
 
         } catch (Exception e) {
-            System.out.println(e);
+            e.printStackTrace();
         } finally {
             if (bis != null)
                 try {
@@ -212,27 +240,19 @@ public class p2p implements Runnable {
         syncLock.unlock();
     }
 
-    //TODO send multiple files with the same name
-    private File getFile(String file) {
-        System.out.println("File " + file + " is stored here");
-        File projectFolder = new File(".");
-        File[] files = projectFolder.listFiles();
-        File requestedFile = null;
-        for (File f : files) {
-            if (f.getName().startsWith(file + ".")) {
-                requestedFile = f;
-                break;
-            }
-        }
-        if (requestedFile == null) {
-            System.out.println("File is supposed to be stored here but no file was found");
-        }
-        return requestedFile;
-    }
-
+    /**
+     * Called when a file request is made
+     * If file is stored at this peer user is called a numpty
+     * Otherwise sends message successors asking for the file
+     * @param msg The command entered
+     */
     private void retrieveFile(String msg) {
         String[] arr = msg.split(" ");
         String file = arr[1];
+        if (arr.length != 2 || file.length() != 4 || !Pattern.matches("[0-9]*", file)) {
+            System.out.println(INVALID_COMMAND);
+            return;
+        }
         int fileNo = Integer.parseInt(file);
         int hashedVal = Math.floorMod(fileNo, 256);
         int receipient = -1;
@@ -262,16 +282,20 @@ public class p2p implements Runnable {
     /**
      * Handles a store request Decides if file belongs to this peer or should be
      * forwarded to another peer
-     * 
+     * Checks if file name is valid 
      * @param file The file to be stored
      */
     public void storeRequest(String file) {
+        if (file.length() != 4 || !Pattern.matches("[0-9]*", file)) {
+            System.out.println(INVALID_COMMAND);
+            return;
+        }
         int fileNo = Integer.parseInt(file);
         int hashedVal = Math.floorMod(fileNo, 256);
 
         if (shouldFileBeStoredHere(hashedVal)) {
             storedFiles.add(file);
-            System.out.println("Store " + file + " reuqest accepted");
+            System.out.println("Store " + file + " request accepted");
         } else {
             forwardStoreReq(file, hashedVal);
         }
@@ -350,7 +374,7 @@ public class p2p implements Runnable {
         try {
             sendJoinRequest(serverPort);
         } catch (Exception e) {
-            System.out.println(e);
+            e.printStackTrace();
         } finally {
             syncLock.unlock();
         }    

@@ -163,32 +163,25 @@ public class TCPReceiver implements Runnable {
 
                 // sending the file name to server. Uses PrintWriter         
                             // receiving the contents from server.  Uses input stream
-        PrintWriter pw = null;
-        BufferedReader socketRead = null;
+
+        System.out.println(newFileName);
+        BufferedOutputStream bos = null;
+
+
         try {
-            InputStream istream = connectionSocket.getInputStream();
-            socketRead = new BufferedReader(new InputStreamReader(istream));
-            FileWriter fw = new FileWriter(newFileName);
-            pw = new PrintWriter(fw);
-            String str;
-            while((str = socketRead.readLine())  !=  null) // reading line-by-line 
-            { 
-                System.out.println(str);
-                pw.println(str);
-                      
-            } 
+            byte[] mybytearray = new byte[1024];
+            InputStream is = connectionSocket.getInputStream();
+            FileOutputStream fos = new FileOutputStream(newFileName);
+            bos = new BufferedOutputStream(fos);
+            int bytesRead = is.read(mybytearray, 0, mybytearray.length);
+            bos.write(mybytearray, 0, bytesRead);
+            bos.close();
         } catch (IOException e) {
-            System.out.println(e);
+            e.printStackTrace();
         } finally {
-            if (socketRead != null)
+            if (bos != null) {
                 try {
-                    socketRead.close();     
-                } catch (Exception e) {
-                    System.out.println(e);
-                }
-            if (pw != null) {
-                try {
-                    pw.close();
+                    bos.close();
                 } catch (Exception e) {
                     System.out.println(e);
                 }

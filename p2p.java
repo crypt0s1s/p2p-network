@@ -3,7 +3,6 @@
 import java.io.*;
 import java.net.*;
 import java.util.*;
-// import java.util.*;
 import java.util.concurrent.locks.*;
 
 public class p2p implements Runnable {
@@ -170,47 +169,29 @@ public class p2p implements Runnable {
 
         int serverPort = findPort(peerRequesting);
 
-        // ServerSocket sersock = new ServerSocket(4000);
-        // System.out.println("Server ready for connection");
-        // Socket sock = sersock.accept();            // binding with port: 4000
-        // System.out.println("Connection is successful and wating for chatting");
-                                                                                                    
-                                  // reading the file name from client
-
-        BufferedInputStream buffInputStream = null;
+        BufferedInputStream bis = null;
         OutputStream os = null;
         Socket clientSocket = null;
-        PrintWriter pwrite = null;
-        BufferedReader contentRead = null;
-        
+
         syncLock.lock();
         try {
-            dbg("TCP Sending " + msg + " to " + peerRequesting);
             clientSocket = new Socket("localhost", serverPort);
             DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
             outToServer.writeBytes(msg + '\n');
 
-
-            String fname = file.getName();
-            // reading file contents
-            contentRead = new BufferedReader(new FileReader(fname));
-      
-          // keeping output stream ready to send the contents
-            OutputStream ostream = clientSocket.getOutputStream( );
-            pwrite = new PrintWriter(ostream, true);
-
-            String str;
-            while((str = contentRead.readLine()) !=  null) // reading line-by-line from file
-            {
-            pwrite.println(str);         // sending each line to client
-            }
+            byte[] mybytearray = new byte[(int) file.length()];
+            bis = new BufferedInputStream(new FileInputStream(file));
+            bis.read(mybytearray, 0, mybytearray.length);
+            os = clientSocket.getOutputStream();
+            os.write(mybytearray, 0, mybytearray.length);
+            os.flush();
 
         } catch (Exception e) {
             System.out.println(e);
         } finally {
-            if (buffInputStream != null)
+            if (bis != null)
                 try {
-                    buffInputStream.close();
+                    bis.close();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -227,77 +208,8 @@ public class p2p implements Runnable {
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-            pwrite.close();  
-            // fileRead.close(); 
-            if (contentRead != null) 
-                try {
-                    contentRead.close();
-                } catch (Exception e) {
-                    System.out.println(e);
-                }
-                
         }
-
-
-        // InputStream istream = sock.getInputStream( );
-        // BufferedReader fileRead =new BufferedReader(new InputStreamReader(istream));
-
-
-
-        // BufferedInputStream buffInputStream = null;
-        // OutputStream os = null;
-        // Socket clientSocket = null;
-        
-        // syncLock.lock();
-        // try {
-        //     dbg("TCP Sending " + msg + " to " + peerRequesting);
-        //     clientSocket = new Socket("localhost", serverPort);
-        //     DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-        //     outToServer.writeBytes(msg + '\n');
-
-        //     byte[] mybytearray = new byte[(int) file.length()];
-        //     FileInputStream fileIntputStream = new FileInputStream(file);
-        //     buffInputStream = new BufferedInputStream(fileIntputStream);
-        //     buffInputStream.read(mybytearray, 0, mybytearray.length);
-
-        //     os = clientSocket.getOutputStream();
-
-        //     // System.out.println("Sending " + FILE_TO_SEND + "(" + mybytearray.length + "
-        //     // bytes)");
-        //     os.write(mybytearray, 0, mybytearray.length);
-        //     os.flush();
-
-        // } catch (Exception e) {
-        //     System.out.println(e);
-        // } finally {
-        //     if (buffInputStream != null)
-        //         try {
-        //             buffInputStream.close();
-        //         } catch (IOException e) {
-        //             e.printStackTrace();
-        //         }
-        //     if (os != null)
-        //         try {
-        //             os.close();
-        //         } catch (IOException e) {
-        //             e.printStackTrace();
-        //         }
-
-        //     if (clientSocket != null)
-        //         try {
-        //             clientSocket.close();
-        //         } catch (IOException e) {
-        //             e.printStackTrace();
-        //         }
-        // }
-
-            // DataInputStream inFromFile = new DataInputStream(new BufferedInputStream(new FileInputStream(file)));
-            // byte[] fileData = inFromFile.readAllBytes();
-            // outToServer.write(fileData);
-            // inFromFile.close();
-            // send file here
         syncLock.unlock();
-     
     }
 
     //TODO send multiple files with the same name
